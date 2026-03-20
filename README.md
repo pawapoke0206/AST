@@ -1,4 +1,4 @@
-# **JP1/AJS Helper Tool**
+# **AST (AJS Support Tool)**
 
 ## **概要**
 
