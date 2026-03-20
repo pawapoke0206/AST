@@ -24,6 +24,9 @@ config.json
 io_exceptions.json
 AJS_trans.prm
 
+# --- Claude Code ---
+CLAUDE.md
+
 # --- バックアップ・作業用 ---
 old/
 
