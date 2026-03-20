@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AJS Helper Tool (Main GUI)
-v4.6 (2025-11-23) - バグ修正(create_result_textbox定義漏れ), 解析結果エリアの横スクロール対応
+AST (AJS Support Tool) - Main GUI
+v5.0 (2026-03-17) - UI刷新, ツール名称変更
 
 機能:
 1. 定義取得・変換 (Print & Convert)
@@ -25,49 +25,68 @@ from ajs_print_logic import print_start_job
 from ajs_define_logic import define_start_job
 from ajs_inout_logic import inout_start_job
 from ajs_rel_logic import pre_start_job
-from ajs_depend_logic import open_t5_job_runner 
+from ajs_depend_logic import open_t5_job_runner
 from ajs_exception_editor import open_editor_window
 
-# ───────────── ★ デザイン定数 ─────────────
+
+# =========================================================================
+# カラー定義
+# =========================================================================
+_COLORS = {
+    "bg":           "#F5F6FA",
+    "frame_bg":     "#FFFFFF",
+    "accent":       "#3B82F6",   # Blue-500
+    "accent_hover": "#2563EB",   # Blue-600
+    "accent_text":  "#FFFFFF",
+    "section_bg":   "#F0F4FF",
+    "border":       "#D1D5DB",
+    "text":         "#1F2937",
+    "text_sub":     "#6B7280",
+    "success":      "#10B981",
+    "error":        "#EF4444",
+    "progress_bg":  "#E5E7EB",
+}
+
+# =========================================================================
+# デザイン定数
+# =========================================================================
 PAD_X = 5
 PAD_Y = 3
 BTN_PAD_Y = 10
 
-# ───────────── ★ 共通ヘルパー ─────────────
+
+# =========================================================================
+# Tooltip
+# =========================================================================
 class Tooltip:
     def __init__(self, widget, text):
         self.widget = widget
         self.text = text
-        self.tooltip = None
-        self.widget.bind("<Enter>", self.show_tooltip)
-        self.widget.bind("<Leave>", self.hide_tooltip)
+        self.tooltip_window = None
+        self.widget.bind("<Enter>", self.show)
+        self.widget.bind("<Leave>", self.hide)
 
-    def show_tooltip(self, event):
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 20
-        y += self.widget.winfo_rooty() + 20
-        self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True) 
-        self.tooltip.wm_geometry(f"+{x}+{y}")
-        label = tk.Label(
-            self.tooltip, 
-            text=self.text, 
-            background="#ffffe0", 
-            relief="solid", 
-            borderwidth=1,
-            font=("", 9, "normal"), 
-            padx=4, 
-            pady=4
-        ) 
-        label.pack()
+    def show(self, event=None):
+        if self.tooltip_window or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 25
+        y = self.widget.winfo_rooty() + 25
+        self.tooltip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tk.Label(tw, text=self.text, justify='left', background="#FFFDE7",
+                 foreground=_COLORS["text"], relief='solid', borderwidth=1,
+                 wraplength=400, padx=8, pady=4).pack()
 
-    def hide_tooltip(self, event):
-        if self.tooltip:
-            self.tooltip.destroy()
-        self.tooltip = None
+    def hide(self, event=None):
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+        self.tooltip_window = None
 
-# ───────────── ★ スクロール制御付きウィジェット作成関数 (ここを追加) ─────────────
 
+# =========================================================================
+# スクロール制御付きウィジェット作成関数
+# =========================================================================
 def setup_scroll_handling(widget, main_scroll_func):
     """
     ウィジェット上のマウスホイール操作を、そのウィジェット専用にする。
@@ -80,7 +99,7 @@ def setup_scroll_handling(widget, main_scroll_func):
             widget.yview_scroll(-1, "units")
         elif event.num == 5:
             widget.yview_scroll(1, "units")
-        return "break" # 親への伝播を阻止
+        return "break"
 
     def _bind_local(event):
         if platform.system() == "Windows":
@@ -90,7 +109,6 @@ def setup_scroll_handling(widget, main_scroll_func):
             widget.bind_all("<Button-5>", _on_local_wheel)
 
     def _unbind_local(event):
-        # メイン画面のスクロールに戻す
         if platform.system() == "Windows":
             widget.bind_all("<MouseWheel>", main_scroll_func)
         else:
@@ -102,50 +120,48 @@ def setup_scroll_handling(widget, main_scroll_func):
 
 
 def create_result_textbox(parent, main_scroll_func, height=10):
-    """
-    横スクロールバー付き、折り返しなしのテキストボックスを作成する
-    """
+    """横スクロールバー付き、折り返しなしのテキストボックスを作成する"""
     frame = ttk.Frame(parent)
     frame.pack(fill="both", expand=True)
 
-    # スクロールバー
     v_scroll = ttk.Scrollbar(frame, orient="vertical")
     h_scroll = ttk.Scrollbar(frame, orient="horizontal")
 
-    # テキストウィジェット (wrap="none" で折り返しなし)
-    text_widget = tk.Text(frame, height=height, wrap="none", undo=False, borderwidth=1, relief="solid")
-    
-    # 配置 (Gridを使用)
+    text_widget = tk.Text(frame, height=height, wrap="none", undo=False,
+                          borderwidth=1, relief="solid",
+                          bg=_COLORS["frame_bg"], fg=_COLORS["text"],
+                          selectbackground=_COLORS["accent"],
+                          selectforeground=_COLORS["accent_text"])
+
     text_widget.grid(row=0, column=0, sticky="nsew")
     v_scroll.grid(row=0, column=1, sticky="ns")
     h_scroll.grid(row=1, column=0, sticky="ew")
 
-    # リサイズ対応
     frame.grid_rowconfigure(0, weight=1)
     frame.grid_columnconfigure(0, weight=1)
 
-    # 連動設定
     text_widget.config(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
     v_scroll.config(command=text_widget.yview)
     h_scroll.config(command=text_widget.xview)
 
-    # スクロール干渉防止
     setup_scroll_handling(text_widget, main_scroll_func)
-
     return text_widget
 
 
-# ───────────── ★ リストエディタ (スクロール制御付き) ─────────────
+# =========================================================================
+# リストエディタ (スクロール制御付き)
+# =========================================================================
 class FileListEditor(ttk.Frame):
     def __init__(self, parent, main_scroll_func):
         super().__init__(parent)
-        self.main_scroll_func = main_scroll_func 
-        
-        self.canvas_frm = ttk.Frame(self, relief="sunken", borderwidth=1)
+        self.main_scroll_func = main_scroll_func
+
+        self.canvas_frm = ttk.Frame(self, relief="solid", borderwidth=1)
         self.canvas_frm.pack(fill="both", expand=True, pady=(0, 5))
-        
-        self.canvas = tk.Canvas(self.canvas_frm, borderwidth=0, background="#ffffff", height=100)
-        self.scroll_frame = ttk.Frame(self.canvas) 
+
+        self.canvas = tk.Canvas(self.canvas_frm, borderwidth=0,
+                                background=_COLORS["frame_bg"], height=100)
+        self.scroll_frame = ttk.Frame(self.canvas)
         self.vsb = ttk.Scrollbar(self.canvas_frm, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=self.vsb.set)
 
@@ -155,12 +171,11 @@ class FileListEditor(ttk.Frame):
 
         self.scroll_frame.bind("<Configure>", self._on_frame_configure)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
-        
-        # 干渉防止
+
         setup_scroll_handling(self.canvas, self.main_scroll_func)
 
-        self.rows = [] 
-        
+        self.rows = []
+
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x")
         ttk.Button(btn_frame, text="＋ 行を追加", command=lambda: self.add_row("")).pack(side="left", padx=PAD_X)
@@ -168,21 +183,21 @@ class FileListEditor(ttk.Frame):
 
     def _on_frame_configure(self, event):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-    
+
     def _on_canvas_configure(self, event):
         self.canvas.itemconfig(self.canvas_window_id, width=event.width)
 
     def add_row(self, text_value):
         row_f = ttk.Frame(self.scroll_frame)
         row_f.pack(fill="x", pady=2, padx=2)
-        
+
         entry = ttk.Entry(row_f)
         entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
         entry.insert(0, text_value)
-        
+
         del_btn = ttk.Button(row_f, text="×", width=3, command=lambda f=row_f: self.remove_row(f))
         del_btn.pack(side="left")
-        
+
         self.rows.append((row_f, entry))
 
     def remove_row(self, frame):
@@ -191,7 +206,7 @@ class FileListEditor(ttk.Frame):
                 f.destroy()
                 self.rows.pop(i)
                 break
-    
+
     def clear_all(self):
         for f, e in self.rows:
             f.destroy()
@@ -207,15 +222,53 @@ class FileListEditor(ttk.Frame):
                 self.add_row(v)
 
 
-# ───────────── メインウィンドウ構築 ─────────────
+# =========================================================================
+# スタイル設定
+# =========================================================================
+def setup_styles(root_win):
+    style = ttk.Style(root_win)
+    try:
+        style.theme_use('vista')
+    except Exception:
+        try:
+            style.theme_use('clam')
+        except Exception:
+            pass
+
+    style.configure("Main.TFrame", background=_COLORS["bg"])
+    style.configure("Card.TFrame", background=_COLORS["frame_bg"])
+
+    style.configure("Section.TLabelframe", background=_COLORS["frame_bg"])
+    style.configure("Section.TLabelframe.Label", background=_COLORS["frame_bg"],
+                     foreground=_COLORS["accent"], font=("", 10, "bold"))
+
+    style.configure("Common.TLabelframe", background=_COLORS["section_bg"])
+    style.configure("Common.TLabelframe.Label", background=_COLORS["section_bg"],
+                     foreground=_COLORS["accent"], font=("", 10, "bold"))
+
+    style.configure("Custom.TNotebook", background=_COLORS["bg"])
+    style.configure("Custom.TNotebook.Tab", padding=[14, 6], font=("", 10))
+
+    style.configure("Custom.Horizontal.TProgressbar",
+                     troughcolor=_COLORS["progress_bg"],
+                     background=_COLORS["accent"], thickness=18)
+
+
+# =========================================================================
+# メインウィンドウ構築
+# =========================================================================
 root = tk.Tk()
-root.title("AJS Helper Tool v4.6")
-root.geometry("800x650") 
+root.title("AST v5.0")
+root.geometry("860x700")
+root.configure(bg=_COLORS["bg"])
+
+# スタイル適用
+setup_styles(root)
 
 # --- 全体スクロール用 Canvas ---
-main_canvas = tk.Canvas(root)
+main_canvas = tk.Canvas(root, highlightthickness=0, bg=_COLORS["bg"])
 main_scrollbar = ttk.Scrollbar(root, orient="vertical", command=main_canvas.yview)
-scrollable_frame = ttk.Frame(main_canvas)
+scrollable_frame = ttk.Frame(main_canvas, style="Main.TFrame")
 
 scrollable_frame.bind(
     "<Configure>",
@@ -246,7 +299,7 @@ else:
 # ==========================================
 # コンテンツ配置 (scrollable_frame内)
 # ==========================================
-main_frm = ttk.Frame(scrollable_frame, padding=15)
+main_frm = ttk.Frame(scrollable_frame, style="Main.TFrame", padding=12)
 main_frm.pack(fill="both", expand=True)
 
 def load_hist():
@@ -260,21 +313,21 @@ def load_hist():
 hist = load_hist()
 
 # --- 共通接続情報 ---
-conn_frm = ttk.LabelFrame(main_frm, text="共通接続情報", padding=10)
-conn_frm.pack(fill="x", expand=True, pady=(0, 10))
+conn_frm = ttk.LabelFrame(main_frm, text="  共通接続情報  ", style="Common.TLabelframe", padding=10)
+conn_frm.pack(fill="x", expand=True, pady=(0, 8))
 conn_frm.columnconfigure(1, weight=1)
 conn_frm.columnconfigure(3, weight=1)
 conn_frm.columnconfigure(5, weight=1)
 
-ttk.Label(conn_frm, text="IP:").grid(row=0, column=0, sticky="e", padx=PAD_X)
+ttk.Label(conn_frm, text="IP:", background=_COLORS["section_bg"]).grid(row=0, column=0, sticky="e", padx=PAD_X)
 v_ip = tk.StringVar(root)
 ttk.Combobox(conn_frm, textvariable=v_ip, values=hist.get('ip', [])).grid(row=0, column=1, sticky="ew", padx=PAD_X)
 
-ttk.Label(conn_frm, text="User:").grid(row=0, column=2, sticky="e", padx=PAD_X)
+ttk.Label(conn_frm, text="User:", background=_COLORS["section_bg"]).grid(row=0, column=2, sticky="e", padx=PAD_X)
 v_user = tk.StringVar(root)
 ttk.Combobox(conn_frm, textvariable=v_user, values=hist.get('user', [])).grid(row=0, column=3, sticky="ew", padx=PAD_X)
 
-ttk.Label(conn_frm, text="Pass:").grid(row=0, column=4, sticky="e", padx=PAD_X)
+ttk.Label(conn_frm, text="Pass:", background=_COLORS["section_bg"]).grid(row=0, column=4, sticky="e", padx=PAD_X)
 v_pass = tk.StringVar(root)
 ttk.Entry(conn_frm, textvariable=v_pass, show="*").grid(row=0, column=5, sticky="ew", padx=PAD_X)
 
@@ -287,33 +340,32 @@ ttk.Combobox(sub_frame, textvariable=v_srv_c, values=['SJIS', 'UTF-8'], width=6,
 def open_advanced_settings():
     adv_win = tk.Toplevel(root)
     adv_win.title("詳細設定")
-    adv_win.geometry("500x200") 
+    adv_win.geometry("500x220")
     adv_win.transient(root)
-    adv_win.grab_set() 
-    
-    frm = ttk.Frame(adv_win, padding=15)
-    frm.pack(fill="both", expand=True)
+    adv_win.grab_set()
+    adv_win.configure(bg=_COLORS["bg"])
+
+    frm = ttk.LabelFrame(adv_win, text="  コマンド・環境変数  ", style="Section.TLabelframe", padding=15)
+    frm.pack(fill="both", expand=True, padx=12, pady=8)
     frm.columnconfigure(1, weight=1)
-    
+
     ttk.Label(frm, text="ajsprint パス:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
     ttk.Entry(frm, textvariable=v_ajs_print_path).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
-    
+
     ttk.Label(frm, text="ajsdefine パス:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
     ttk.Entry(frm, textvariable=v_ajs_define_path).grid(row=1, column=1, sticky="ew", padx=5, pady=5)
-    
+
     ttk.Separator(frm, orient="horizontal").grid(row=2, column=0, columnspan=2, sticky="ew", pady=10)
-    
+
     ttk.Label(frm, text="JP1_HOSTNAME:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
-    e_host = ttk.Entry(frm, textvariable=v_jp1_hostname)
-    e_host.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
+    ttk.Entry(frm, textvariable=v_jp1_hostname).grid(row=3, column=1, sticky="ew", padx=5, pady=5)
 
     ttk.Label(frm, text="JP1_USERNAME:").grid(row=4, column=0, sticky="e", padx=5, pady=5)
-    e_user = ttk.Entry(frm, textvariable=v_jp1_username)
-    e_user.grid(row=4, column=1, sticky="ew", padx=5, pady=5)
+    ttk.Entry(frm, textvariable=v_jp1_username).grid(row=4, column=1, sticky="ew", padx=5, pady=5)
 
     btn_frm = ttk.Frame(frm)
     btn_frm.grid(row=5, column=0, columnspan=2, pady=10)
-    
+
     def restore():
         v_ajs_print_path.set(AJS_PRINT_PATH)
         v_ajs_define_path.set(AJS_DEFINE_PATH)
@@ -327,8 +379,8 @@ ttk.Button(sub_frame, text="詳細...", width=6, command=open_advanced_settings)
 
 
 # --- ノートブック ---
-notebook = ttk.Notebook(main_frm)
-notebook.pack(fill="both", expand=True, pady=5)
+notebook = ttk.Notebook(main_frm, style="Custom.TNotebook")
+notebook.pack(fill="both", expand=True, pady=(4, 0))
 
 # --- 共通変数定義 ---
 # Tab 1
@@ -339,18 +391,18 @@ v_print_bank = tk.StringVar(root)
 v_print_detail = tk.StringVar(root)
 v_print_out_c = tk.StringVar(root, 'SJIS(CP932)')
 v_print_out_n = tk.StringVar(root, 'CRLF(Windows)')
-print_custom_pairs = [] 
+print_custom_pairs = []
 
 # Tab 2
 v_recover_file = tk.StringVar(root)
-v_recover_unit = tk.StringVar(root, "") 
+v_recover_unit = tk.StringVar(root, "")
 
 # Tab 3
 v_inout_ajs = tk.StringVar(root)
 v_inout_res = tk.StringVar(root)
-v_inout_bank = tk.StringVar(root) 
-v_inout_format = tk.StringVar(root, "Excel") 
-inout_custom_vars = [] 
+v_inout_bank = tk.StringVar(root)
+v_inout_format = tk.StringVar(root, "Excel")
+inout_custom_vars = []
 
 # Tab 4
 v_pre_root = tk.StringVar(root)
@@ -361,11 +413,11 @@ v_pre_out_n = tk.StringVar(root, 'CRLF(Windows)')
 # Tab 5
 v_dep_ajs = tk.StringVar(root)
 v_dep_res = tk.StringVar(root)
-v_dep_tgt_files = tk.StringVar(root) 
-v_dep_bank = tk.StringVar(root) 
+v_dep_tgt_files = tk.StringVar(root)
+v_dep_bank = tk.StringVar(root)
 v_dep_out_c = tk.StringVar(root, 'SJIS(CP932)')
 v_dep_out_n = tk.StringVar(root, 'CRLF(Windows)')
-dep_custom_vars = [] 
+dep_custom_vars = []
 
 # Commands & Env
 v_ajs_print_path = tk.StringVar(root, AJS_PRINT_PATH)
@@ -373,7 +425,7 @@ v_ajs_define_path = tk.StringVar(root, AJS_DEFINE_PATH)
 v_jp1_hostname = tk.StringVar(root, DEFAULT_JP1_HOSTNAME)
 v_jp1_username = tk.StringVar(root, DEFAULT_JP1_USERNAME)
 
-status_var = tk.StringVar(root, '待機中')
+status_var = tk.StringVar(root, '準備完了')
 progress = tk.DoubleVar(root, 0.0)
 BANKS = ["香川", "徳島大正", "トマト", "高知", "大光", "大東", "栃木", "静岡中央", "三十三", "その他"]
 
@@ -405,14 +457,14 @@ def run_in_thread(target_func):
             btn_map = {0: run_btn_print, 1: run_btn_rec, 2: run_btn_inout, 3: run_btn_pre, 4: run_btn_dep}
             btn = btn_map.get(current_tab)
         except Exception:
-            btn = None 
+            btn = None
 
         if btn:
             btn.config(state="disabled")
-        
+
         thread = threading.Thread(target=target_func, args=args, kwargs=kwargs, daemon=True)
         thread.start()
-        
+
         if btn:
             check_thread(thread, btn)
     return wrapper
@@ -421,7 +473,7 @@ def get_ssh_client():
     ip, user, pw = v_ip.get(), v_user.get(), v_pass.get()
     if not all([ip, user, pw]):
         raise ValueError("接続情報 (IP, ユーザー, パスワード) を入力してください。")
-    
+
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(ip, username=user, password=pw, timeout=10)
@@ -430,33 +482,33 @@ def get_ssh_client():
 def save_hist():
     hist_data = load_hist()
     hist_items = {
-        'ip': v_ip.get(), 'user': v_user.get(), 
+        'ip': v_ip.get(), 'user': v_user.get(),
         'print_ajs_path': v_print_ajs_path.get(),
-        'recover_unit_name': v_recover_unit.get(), 
-        'inout_ajs_path': v_inout_ajs.get(), 'inout_res_path': v_inout_res.get(), 
+        'recover_unit_name': v_recover_unit.get(),
+        'inout_ajs_path': v_inout_ajs.get(), 'inout_res_path': v_inout_res.get(),
         'pre_root': v_pre_root.get(), 'pre_tgt': v_pre_tgt.get(),
         'dep_ajs_path': v_dep_ajs.get(), 'dep_res_path': v_dep_res.get(),
         'dep_tgt_files': v_dep_tgt_files.get(),
     }
-    
+
     for key, value in hist_items.items():
         if not value: continue
         new_list = [value] + [x for x in hist_data.get(key, []) if x != value]
         hist_data[key] = new_list[:MAX_HIST]
-        
+
     HIST_FILE.write_text(json.dumps(hist_data, indent=2, ensure_ascii=False), encoding='utf-8')
 
 gui_funcs_common = {
-    'update_status': update_status, 
-    'get_ssh_client': get_ssh_client, 
-    'save_hist': save_hist, 
-    'show_info': show_info, 
-    'show_error': show_error, 
+    'update_status': update_status,
+    'get_ssh_client': get_ssh_client,
+    'save_hist': save_hist,
+    'show_info': show_info,
+    'show_error': show_error,
     'run_in_thread': run_in_thread
 }
 
 def create_output_selector(parent, outc_var, outn_var):
-    frm = ttk.LabelFrame(parent, text="出力定義設定", padding=5)
+    frm = ttk.LabelFrame(parent, text="  出力定義設定  ", style="Section.TLabelframe", padding=5)
     ttk.Label(frm, text="出力文字コード").pack(side="left", padx=(5, 5))
     ttk.Combobox(frm, textvariable=outc_var, values=['SJIS(CP932)', 'UTF-8'], width=15, state='readonly').pack(side="left")
     ttk.Label(frm, text="出力改行コード").pack(side="left", padx=(20, 5))
@@ -470,6 +522,7 @@ def open_key_value_window(title, data_list, key_label, value_label):
     cust_win.geometry("500x400")
     cust_win.transient(root)
     cust_win.grab_set()
+    cust_win.configure(bg=_COLORS["bg"])
 
     hdr_frm = ttk.Frame(cust_win, padding=(10, 10, 10, 0))
     hdr_frm.pack(fill="x")
@@ -478,8 +531,8 @@ def open_key_value_window(title, data_list, key_label, value_label):
 
     canvas_frm = ttk.Frame(cust_win, padding=5)
     canvas_frm.pack(fill="both", expand=True)
-    canvas = tk.Canvas(canvas_frm, borderwidth=0, background="#ffffff")
-    scroll_frame = ttk.Frame(canvas, padding=(10, 0)) 
+    canvas = tk.Canvas(canvas_frm, borderwidth=0, background=_COLORS["frame_bg"])
+    scroll_frame = ttk.Frame(canvas, padding=(10, 0))
     vsb = ttk.Scrollbar(canvas_frm, orient="vertical", command=canvas.yview)
     canvas.configure(yscrollcommand=vsb.set)
     vsb.pack(side="right", fill="y")
@@ -488,14 +541,13 @@ def open_key_value_window(title, data_list, key_label, value_label):
 
     def _conf(e): canvas.configure(scrollregion=canvas.bbox("all"))
     scroll_frame.bind("<Configure>", _conf)
-    
-    # キーバリューウィンドウはモーダルなので単純なbindでOK
-    def _wheel(e): 
+
+    def _wheel(e):
         if e.delta: canvas.yview_scroll(int(-1*(e.delta/120)), "units")
     canvas.bind_all("<MouseWheel>", _wheel)
     cust_win.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
-    all_rows = [] 
+    all_rows = []
     def add_pair_row(key_text="", val_text=""):
         row_f = ttk.Frame(scroll_frame)
         row_f.pack(fill="x", pady=2)
@@ -505,7 +557,7 @@ def open_key_value_window(title, data_list, key_label, value_label):
         val_e = ttk.Entry(row_f, width=30)
         val_e.pack(side="left", padx=5, expand=True, fill="x")
         val_e.insert(0, val_text)
-        
+
         del_btn = ttk.Button(row_f, text="削除", width=5, command=lambda f=row_f: remove_pair_row(f))
         del_btn.pack(side="left", padx=5)
         all_rows.append((row_f, key_e, val_e))
@@ -518,14 +570,14 @@ def open_key_value_window(title, data_list, key_label, value_label):
                 break
 
     if not current_data:
-        add_pair_row() 
+        add_pair_row()
     else:
         for k, v in current_data:
             add_pair_row(k, v)
 
     f_btn = ttk.Frame(cust_win, padding=10)
     f_btn.pack(fill="x")
-    
+
     def save_and_close():
         data_list.clear()
         for f, key_e, val_e in all_rows:
@@ -538,11 +590,28 @@ def open_key_value_window(title, data_list, key_label, value_label):
     ttk.Button(f_btn, text="行を追加", command=lambda: add_pair_row()).pack(side="right")
 
 
-# --- Tab 1: 定義取得・変換 ---
-tab1 = ttk.Frame(notebook, padding=10)
-notebook.add(tab1, text="定義取得・変換")
+# =========================================================================
+# 共通: アクセントカラーの実行ボタン生成
+# =========================================================================
+def create_accent_button(parent, text, command):
+    btn = tk.Button(
+        parent, text=text, font=("", 11, "bold"),
+        bg=_COLORS["accent"], fg=_COLORS["accent_text"],
+        activebackground=_COLORS["accent_hover"],
+        activeforeground=_COLORS["accent_text"],
+        relief="flat", padx=20, pady=6, cursor="hand2",
+        command=command
+    )
+    return btn
 
-t1_frm = ttk.LabelFrame(tab1, text="実行設定", padding=10)
+
+# =========================================================================
+# Tab 1: 定義取得・変換
+# =========================================================================
+tab1 = ttk.Frame(notebook, style="Main.TFrame", padding=10)
+notebook.add(tab1, text="  定義取得・変換  ")
+
+t1_frm = ttk.LabelFrame(tab1, text="  実行設定  ", style="Section.TLabelframe", padding=10)
 t1_frm.pack(fill="x")
 t1_frm.columnconfigure(1, weight=1)
 
@@ -570,7 +639,7 @@ def on_bank_select(*_):
     else:
         for rb in det_rbs:
             rb.config(state="normal")
-    on_detail_select() 
+    on_detail_select()
 
 def toggle_conv_widgets(*_):
     state = "normal" if v_print_conv_flg.get() == "yes" else "disabled"
@@ -608,7 +677,7 @@ custom_detail_btn = ttk.Button(det_frame, text="詳細...", state="disabled", co
     "カスタム変換設定", print_custom_pairs, "変換元文言", "変換先文言"))
 custom_detail_btn.grid(row=len(DETAILS) // 3, column=len(DETAILS) % 3, sticky="w", padx=10, pady=5)
 
-toggle_conv_widgets() 
+toggle_conv_widgets()
 create_output_selector(tab1, v_print_out_c, v_print_out_n).pack(fill="x", pady=5, expand=True)
 
 def create_print_runner():
@@ -629,14 +698,17 @@ def create_print_runner():
     }
     run_in_thread(print_start_job)(gui_vars_map, gui_funcs_common)
 
-run_btn_print = ttk.Button(tab1, text="取得＆変換 実行", command=create_print_runner)
+run_btn_print = create_accent_button(tab1, "▶  取得＆変換 実行", create_print_runner)
 run_btn_print.pack(pady=BTN_PAD_Y)
 
 
-# --- Tab 2: 定義回復 ---
-tab2 = ttk.Frame(notebook, padding=10)
-notebook.add(tab2, text="定義回復")
-t2_frm = ttk.LabelFrame(tab2, text="実行設定", padding=10)
+# =========================================================================
+# Tab 2: 定義回復
+# =========================================================================
+tab2 = ttk.Frame(notebook, style="Main.TFrame", padding=10)
+notebook.add(tab2, text="  定義回復  ")
+
+t2_frm = ttk.LabelFrame(tab2, text="  実行設定  ", style="Section.TLabelframe", padding=10)
 t2_frm.pack(fill="x")
 t2_frm.columnconfigure(1, weight=1)
 
@@ -651,22 +723,24 @@ def create_recover_runner():
     gui_vars_map = {
         'v_recover_file': v_recover_file,
         'v_recover_unit': v_recover_unit,
-        'v_srv_c': v_srv_c, 
+        'v_srv_c': v_srv_c,
         'v_ajs_define_path': v_ajs_define_path,
         'v_jp1_hostname': v_jp1_hostname,
         'v_jp1_username': v_jp1_username,
     }
     run_in_thread(define_start_job)(gui_vars_map, gui_funcs_common)
 
-run_btn_rec = ttk.Button(tab2, text="回復実行", command=create_recover_runner)
+run_btn_rec = create_accent_button(tab2, "▶  回復実行", create_recover_runner)
 run_btn_rec.pack(pady=BTN_PAD_Y)
 
 
-# --- Tab 3: 入出力解析 ---
-tab3 = ttk.Frame(notebook, padding=10)
-notebook.add(tab3, text="入出力解析")
+# =========================================================================
+# Tab 3: 入出力解析
+# =========================================================================
+tab3 = ttk.Frame(notebook, style="Main.TFrame", padding=10)
+notebook.add(tab3, text="  入出力解析  ")
 
-t3_frm = ttk.LabelFrame(tab3, text="実行設定", padding=10)
+t3_frm = ttk.LabelFrame(tab3, text="  実行設定  ", style="Section.TLabelframe", padding=10)
 t3_frm.pack(fill="x")
 t3_frm.columnconfigure(1, weight=1)
 
@@ -703,13 +777,11 @@ t3_out_frame.grid(row=3, column=1, columnspan=2, sticky="w")
 ttk.Radiobutton(t3_out_frame, text="Excel", variable=v_inout_format, value="Excel").pack(side="left", padx=5)
 ttk.Radiobutton(t3_out_frame, text="CSV", variable=v_inout_format, value="CSV").pack(side="left", padx=5)
 
-# ルール編集ボタンをフレーム内に配置
 ttk.Button(t3_frm, text="I/Oルール編集", command=lambda: open_editor_window(root, [b for b in BANKS if b != "その他"] + ["*"])).grid(row=3, column=2, sticky="e", padx=PAD_X)
 
-t3_res_frm = ttk.LabelFrame(tab3, text="解析結果 (問題のあったユニット一覧)", padding=10)
+t3_res_frm = ttk.LabelFrame(tab3, text="  解析結果 (問題のあったユニット一覧)  ", style="Section.TLabelframe", padding=10)
 t3_res_frm.pack(fill="both", expand=True, pady=(10, 0))
 
-# ★修正: create_result_textbox を使用
 t3_text_box = create_result_textbox(t3_res_frm, on_main_mousewheel, height=6)
 
 def create_inout_runner():
@@ -727,15 +799,17 @@ def create_inout_runner():
     }
     run_in_thread(inout_start_job)(gui_vars_map, gui_funcs_common)
 
-run_btn_inout = ttk.Button(tab3, text="解析実行", command=create_inout_runner)
-run_btn_inout.pack(pady=BTN_PAD_Y) 
+run_btn_inout = create_accent_button(tab3, "▶  解析実行", create_inout_runner)
+run_btn_inout.pack(pady=BTN_PAD_Y)
 
 
-# --- Tab 4: 先行関係解析 ---
-tab4 = ttk.Frame(notebook, padding=10)
-notebook.add(tab4, text="先行関係解析")
+# =========================================================================
+# Tab 4: 先行関係解析
+# =========================================================================
+tab4 = ttk.Frame(notebook, style="Main.TFrame", padding=10)
+notebook.add(tab4, text="  先行関係解析  ")
 
-t4_frm = ttk.LabelFrame(tab4, text="実行設定", padding=10)
+t4_frm = ttk.LabelFrame(tab4, text="  実行設定  ", style="Section.TLabelframe", padding=10)
 t4_frm.pack(fill="x")
 t4_frm.columnconfigure(1, weight=1)
 
@@ -747,10 +821,9 @@ ttk.Combobox(t4_frm, textvariable=v_pre_tgt, values=hist.get('pre_tgt', [])).gri
 
 create_output_selector(tab4, v_pre_out_c, v_pre_out_n).pack(fill="x", pady=5, expand=True)
 
-t4_res_frm = ttk.LabelFrame(tab4, text="解析結果 (関連ユニット一覧)", padding=10)
+t4_res_frm = ttk.LabelFrame(tab4, text="  解析結果 (関連ユニット一覧)  ", style="Section.TLabelframe", padding=10)
 t4_res_frm.pack(fill="both", expand=True)
 
-# ★修正: create_result_textbox を使用
 t4_text_box = create_result_textbox(t4_res_frm, on_main_mousewheel, height=10)
 
 def create_pre_runner():
@@ -766,15 +839,17 @@ def create_pre_runner():
     }
     run_in_thread(pre_start_job)(gui_vars_map, gui_funcs_common, t4_text_box)
 
-run_btn_pre = ttk.Button(tab4, text="解析実行", command=create_pre_runner)
+run_btn_pre = create_accent_button(tab4, "▶  解析実行", create_pre_runner)
 run_btn_pre.pack(pady=BTN_PAD_Y)
 
 
-# --- Tab 5: 依存関係解析 ---
-tab5 = ttk.Frame(notebook, padding=10)
-notebook.add(tab5, text="依存関係解析")
+# =========================================================================
+# Tab 5: 依存関係解析
+# =========================================================================
+tab5 = ttk.Frame(notebook, style="Main.TFrame", padding=10)
+notebook.add(tab5, text="  依存関係解析  ")
 
-t5_frm = ttk.LabelFrame(tab5, text="実行設定", padding=10)
+t5_frm = ttk.LabelFrame(tab5, text="  実行設定  ", style="Section.TLabelframe", padding=10)
 t5_frm.pack(fill="x")
 t5_frm.columnconfigure(1, weight=1)
 
@@ -808,26 +883,23 @@ for i, b in enumerate(BANKS):
 lbl_files = ttk.Label(t5_frm, text="目標ファイル")
 lbl_files.grid(row=3, column=0, sticky="ne", pady=PAD_Y)
 
-# リストエディタ
 t5_list_editor = FileListEditor(t5_frm, on_main_mousewheel)
 t5_list_editor.grid(row=3, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
 
-# Tab5初期値は常に空
 t5_list_editor.set_values([])
 
 create_output_selector(tab5, v_dep_out_c, v_dep_out_n).pack(fill="x", pady=5, expand=True)
 
-t5_res_frm = ttk.LabelFrame(tab5, text="解析結果 (抽出ユニットと外部入力ファイル一覧)", padding=10)
+t5_res_frm = ttk.LabelFrame(tab5, text="  解析結果 (抽出ユニットと外部入力ファイル一覧)  ", style="Section.TLabelframe", padding=10)
 t5_res_frm.pack(fill="both", expand=True)
 
-# ★修正: create_result_textbox を使用
 t5_text_box = create_result_textbox(t5_res_frm, on_main_mousewheel, height=10)
 
 def create_dep_runner():
     global dep_custom_vars
     file_list = t5_list_editor.get_values()
     v_dep_tgt_files.set("\n".join(file_list))
-    
+
     gui_vars_map = {
         'v_dep_ajs': v_dep_ajs,
         'v_dep_res': v_dep_res,
@@ -835,22 +907,37 @@ def create_dep_runner():
         'v_dep_bank': v_dep_bank,
         'v_dep_custom_vars': dep_custom_vars,
         'v_t5_out_c': v_dep_out_c,
-        'v_t5_out_n': v_dep_out_n, 
+        'v_t5_out_n': v_dep_out_n,
         'v_ajs_print_path': v_ajs_print_path,
         'v_jp1_hostname': v_jp1_hostname,
         'v_jp1_username': v_jp1_username,
     }
     open_t5_job_runner(gui_vars_map, gui_funcs_common, t5_text_box)
 
-run_btn_dep = ttk.Button(tab5, text="解析＆定義作成 実行", command=create_dep_runner)
+run_btn_dep = create_accent_button(tab5, "▶  解析＆定義作成 実行", create_dep_runner)
 run_btn_dep.pack(pady=BTN_PAD_Y)
 
 
-# --- 共通ステータスバー ---
-status_frm = ttk.Frame(main_frm)
-status_frm.pack(fill="x", side="bottom", pady=(10, 0))
-ttk.Progressbar(status_frm, variable=progress, maximum=100, length=260, mode='determinate').pack(fill="x")
-ttk.Label(status_frm, textvariable=status_var).pack(fill="x", pady=(2, 0))
+# =========================================================================
+# 共通ステータスバー + プログレスバー
+# =========================================================================
+status_frm = ttk.Frame(main_frm, style="Main.TFrame")
+status_frm.pack(fill="x", side="bottom", pady=(8, 0))
+
+progress_inner = ttk.Frame(status_frm, style="Main.TFrame")
+progress_inner.pack(fill="x")
+
+ttk.Progressbar(
+    progress_inner, variable=progress, maximum=100,
+    length=300, mode='determinate',
+    style="Custom.Horizontal.TProgressbar"
+).pack(fill="x", side="left", expand=True, padx=(0, 8))
+
+ttk.Label(
+    progress_inner, textvariable=status_var,
+    font=("", 9), foreground=_COLORS["text_sub"], anchor="e"
+).pack(side="right")
+
 
 if __name__ == '__main__':
     root.mainloop()
