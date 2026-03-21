@@ -427,7 +427,6 @@ v_jp1_username = tk.StringVar(root, DEFAULT_JP1_USERNAME)
 
 status_var = tk.StringVar(root, '準備完了')
 progress = tk.DoubleVar(root, 0.0)
-BANKS = ["香川", "徳島大正", "トマト", "高知", "大光", "大東", "栃木", "静岡中央", "三十三", "その他"]
 
 
 # --- ヘルパー関数 ---
